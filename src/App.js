@@ -30,6 +30,24 @@ const MODES = [
 				<path d="M7 16l-4-4m0 0l4-4m-4 4h18m-7 4l4 4m0 0l-4 4m4-4H3" />
 			</svg>
 		),
+		specs: {
+			title: 'ファイル形式変換（相互変換）',
+			changes: [
+				'コンテナフォーマット（MP4 / MOV / MXF / MP3 / WAV）',
+				'映像コーデック（MP4/MOV: H.264 libx264, MXF: MPEG-2 mpeg2video）',
+				'音声コーデック（MP4/MOV: AAC, MXF/WAV: PCM 16bit, MP3: libmp3lame）',
+				'色空間メタデータ（BT.709 VUIタグの最適化付与）',
+			],
+			keeps: [
+				'解像度・アスペクト比（元のピクセルサイズを保持）',
+				'フレームレート（元のfpsを保持）',
+				'音声チャンネル数・サンプリング周波数（MXF/WAV規格準拠時を除く）',
+			],
+			command:
+				'ffmpeg -i input.mov \\\n  -c:v libx264 -preset veryfast -pix_fmt yuv420p \\\n  -color_primaries bt709 -color_trc bt709 -colorspace bt709 \\\n  -crf 20 \\\n  -c:a aac -b:a 192k \\\n  -movflags +faststart output.mp4',
+			details:
+				'MP4/MOVはWeb標準のH.264 (yuv420p) + AACで再エンコード。MXFは業務用仕様のMPEG-2 (yuv422p, 30Mbps) + リニアPCM 48kHz。MOVからMP4への変換時にもQuickTimeガンマシフトを防ぐBT.709メタデータを注入します。',
+		},
 	},
 	{
 		id: 'volume',
@@ -52,6 +70,22 @@ const MODES = [
 				<path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
 			</svg>
 		),
+		specs: {
+			title: '音量レベル変換（dB調整）',
+			changes: [
+				'音声ゲイン（指定したdB値による増減）',
+				'音声トラックの再エンコード（AAC / MP3 / PCM）',
+			],
+			keeps: [
+				'映像トラック全体（-c:v copy による完全無劣化・超高速ストリームコピー）',
+				'解像度・フレームレート・色空間・ビットレート',
+				'コンテナ形式・タイムスタンプ',
+			],
+			command:
+				'ffmpeg -i input.mp4 \\\n  -af "volume=3dB" \\\n  -c:v copy \\\n  -c:a aac -b:a 192k \\\n  -movflags +faststart output.mp4',
+			details:
+				'FFmpegの volume オーディオフィルタを適用。動画ファイルの場合、映像部分は再エンコードを一切行わない「-c:v copy」を指定するため、画質劣化ゼロかつ数秒で処理が完了します。',
+		},
 	},
 	{
 		id: 'bitrate',
@@ -75,6 +109,19 @@ const MODES = [
 				<line x1="6" y1="18" x2="6.01" y2="18" />
 			</svg>
 		),
+		specs: {
+			title: 'ビットレート変換（データレート指定）',
+			changes: [
+				'映像ビットレート（-b:v 指定値で再圧縮）',
+				'音声ビットレート（-b:a 指定値で再圧縮）',
+				'ファイル全体の容量（データサイズ）',
+			],
+			keeps: ['画面解像度（幅・高さ）', 'フレームレート（fps）', 'カラープロファイル・色空間'],
+			command:
+				'ffmpeg -i input.mp4 \\\n  -c:v libx264 -preset veryfast -pix_fmt yuv420p \\\n  -color_primaries bt709 -color_trc bt709 -colorspace bt709 \\\n  -b:v 1000k \\\n  -c:a aac -b:a 128k output.mp4',
+			details:
+				'指定したビットレート（例: 映像1000k、音声128k）を目標値としてエンコードします。現在の元ファイルビットレートが事前解析されてUIに表示されるため、狙った圧縮率を正確に指定できます。',
+		},
 	},
 	{
 		id: 'fps',
@@ -96,6 +143,22 @@ const MODES = [
 				<polyline points="12 6 12 12 16 14" />
 			</svg>
 		),
+		specs: {
+			title: 'フレームレート変換（FPS調整）',
+			changes: [
+				'1秒あたりのコマ数（fps=N フィルタで間引きまたはフレーム補間複製）',
+				'映像ストリームの再エンコード',
+			],
+			keeps: [
+				'動画の再生速度・実時間（等速再生を維持）',
+				'画面解像度・アスペクト比',
+				'音声トラック（音ズレなし）',
+			],
+			command:
+				'ffmpeg -i input.mp4 \\\n  -vf "fps=60" \\\n  -c:v libx264 -preset veryfast -pix_fmt yuv420p \\\n  -crf 20 -c:a aac -b:a 192k output.mp4',
+			details:
+				'FFmpegの fps ビデオフィルタを使用。タイムスタンプを再計算しながらコマ数を厳密に目的のレート（例: 24, 30, 60）に整えます。再生速度が変わってしまうことはありません。',
+		},
 	},
 	{
 		id: 'resize',
@@ -119,6 +182,54 @@ const MODES = [
 				<path d="M3 21l7-7" />
 			</svg>
 		),
+		specs: {
+			title: 'リサイズ（アスペクト比維持スケール）',
+			changes: [
+				'画面解像度（横幅上限 1920/1280/720 に合わせた縮小）',
+				'縦ピクセル数（H.264仕様を満たす偶数ピクセル自動調整）',
+			],
+			keeps: [
+				'アスペクト比（映像が引き伸ばされたり歪むことはありません）',
+				'フレームレート（元のfpsを保持）',
+				'音声トラック',
+			],
+			command:
+				'ffmpeg -i input.mp4 \\\n  -vf "scale=w=\'min(1280,trunc(iw/2)*2)\':h=-2" \\\n  -c:v libx264 -preset veryfast -pix_fmt yuv420p \\\n  -crf 20 -c:a aac -b:a 192k output.mp4',
+			details:
+				"「scale=w='min(W,trunc(iw/2)*2)':h=-2」フィルタを適用。元サイズが指定幅より小さい場合は拡大せず保持し、縦幅は「-2」によりアスペクト比を維持しつつH.264エンコードエラーを防ぐ偶数ピクセルへ揃えます。",
+		},
+	},
+	{
+		id: 'rotate',
+		label: '回転',
+		desc: '動画の向きを 90度・180度・270度 時計回りに回転します。',
+		accept: VIDEO_EXT,
+		icon: (
+			<svg
+				width="18"
+				height="18"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="2"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			>
+				<path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+			</svg>
+		),
+		specs: {
+			title: '動画回転（時計回り 90° / 180° / 270°）',
+			changes: [
+				'映像ピクセルの物理配置（90°/270°は縦横幅が入れ替わります）',
+				'回転メタデータの初期化（-metadata:s:v:0 rotate=0 で二重回転を防止）',
+			],
+			keeps: ['音声トラック', 'アスペクト比（正方形ピクセルを維持）', 'フレームレート'],
+			command:
+				'ffmpeg -i input.mp4 \\\n  -vf "transpose=1,scale=trunc(iw/2)*2:trunc(ih/2)*2" \\\n  -metadata:s:v:0 rotate=0 \\\n  -c:v libx264 -preset veryfast -pix_fmt yuv420p \\\n  -crf 20 -c:a aac -b:a 192k output.mp4',
+			details:
+				'90度は transpose=1、180度は transpose=1,transpose=1、270度は transpose=2 を適用。スマートフォンの動画に付与されている回転メタデータタグをクリアし、ピクセルそのものを物理的に回転させて再エンコードします。',
+		},
 	},
 	{
 		id: 'concat',
@@ -142,6 +253,23 @@ const MODES = [
 				<path d="M10 12h4" />
 			</svg>
 		),
+		specs: {
+			title: '複数動画の結合（正規化連結）',
+			changes: [
+				'解像度・黒帯余白（1本目の動画サイズに揃えて自動パディング）',
+				'フレームレート（30fpsに統一）',
+				'音声仕様（48kHz / 16bit / ステレオに正規化。無音動画には無音トラックを自動補完）',
+				'出力コンテナ（MP4に統一）',
+			],
+			keeps: [
+				'各動画の内容と指定した順番（ドラッグ＆ドロップ順）',
+				'各動画のアスペクト比（レターボックス/ピラーボックス付与）',
+			],
+			command:
+				'ffmpeg -i in1.mp4 -i in2.mp4 \\\n  -filter_complex \\\n  "[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v0];\\\n   [0:a:0]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a0];\\\n   [1:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v1];\\\n   [1:a:0]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a1];\\\n   [v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]" \\\n  -map "[v]" -map "[a]" -c:v libx264 -c:a aac output.mp4',
+			details:
+				'解像度やfps、音声仕様が異なる動画同士でも失敗せずに結合できるよう、高度なフィルタコンプレックスで1本目の解像度・30fps・48kHzステレオに自動正規化してから連結します。',
+		},
 	},
 	{
 		id: 'still',
@@ -164,6 +292,18 @@ const MODES = [
 				<polyline points="21 15 16 10 5 21" />
 			</svg>
 		),
+		specs: {
+			title: '静止画＋音声 → MP4生成',
+			changes: [
+				'静止画の映像ストリーム化（H.264 静止画特化 -tune stillimage）',
+				'出力ファイル長（音声の長さに合わせて -t で末尾余分な4秒超過をカット）',
+			],
+			keeps: ['音声トラックの内容・音質（AAC 192kbps）', '静止画の鮮明度・アスペクト比'],
+			command:
+				'ffmpeg -loop 1 -framerate 10 -i image.png -i audio.mp3 \\\n  -c:v libx264 -tune stillimage -preset veryfast -pix_fmt yuv420p \\\n  -color_primaries bt709 -color_trc bt709 -colorspace bt709 \\\n  -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \\\n  -c:a aac -b:a 192k \\\n  -t 182.500 \\\n  -movflags +faststart output.mp4',
+			details:
+				'-tune stillimage を指定して静止画に最適化した高効率エンコードを行います。FFmpeg特有のバッファ超過（音声より動画が4秒長くなる現象）を防止するため、事前に音声長を解析して -t で正確に揃えて出力します。',
+		},
 	},
 	{
 		id: 'cut',
@@ -188,6 +328,21 @@ const MODES = [
 				<line x1="8.12" y1="8.12" x2="12" y2="12" />
 			</svg>
 		),
+		specs: {
+			title: '動画・音声の切り出し（トリミング＆複数区間結合）',
+			changes: [
+				'ファイルの再生時間（指定した開始〜終了区間のみ抽出）',
+				'複数区間指定時のシームレス連結（再エンコード）',
+			],
+			keeps: [
+				'映像・音声の解像度・アスペクト比・サンプリングレート',
+				'カラープロファイル・色空間メタデータ',
+			],
+			command:
+				'# 単一区間の場合:\nffmpeg -ss 00:05.0 -i input.mp4 -t 15.000 \\\n  -c:v libx264 -preset veryfast -pix_fmt yuv420p \\\n  -crf 20 -c:a aac -b:a 192k output.mp4\n\n# 複数区間の場合は trim/atrim フィルタで抽出し結合再エンコード',
+			details:
+				'プレビュー再生位置に合わせて START / STOP をワンクリックするだけで区間を指定可能。複数区間を指定した場合は、FFmpegの trim フィルタと concat フィルタを用いてズレなく連結し、1本のファイルに出力します。',
+		},
 	},
 ];
 
@@ -198,6 +353,7 @@ const INITIAL_PARAMS = {
 	audioBitrate: '128k',
 	fps: '30',
 	size: '1280',
+	angle: '90',
 };
 
 const formatSize = (b) => {
@@ -295,6 +451,9 @@ export default function App() {
 	const [ranges, setRanges] = useState([{ id: 1, start: '00:00.0', end: '00:10.0' }]);
 	const [dragItemIndex, setDragItemIndex] = useState(null);
 
+	// 諸元モーダル用ステート
+	const [specModalMode, setSpecModalMode] = useState(null);
+
 	const inputRef = useRef(null);
 	const mediaRef = useRef(null);
 	const downloadedRef = useRef(null);
@@ -302,6 +461,15 @@ export default function App() {
 	const mode = MODES.find((m) => m.id === modeId);
 	const busy = phase === 'uploading' || phase === 'running';
 	const setParam = (key) => (e) => setP((prev) => ({ ...prev, [key]: e.target.value }));
+
+	// ESCキーでモーダルを閉じる
+	useEffect(() => {
+		const handleKeyDown = (e) => {
+			if (e.key === 'Escape') setSpecModalMode(null);
+		};
+		window.addEventListener('keydown', handleKeyDown);
+		return () => window.removeEventListener('keydown', handleKeyDown);
+	}, []);
 
 	useEffect(() => {
 		if (files.length === 0) {
@@ -311,13 +479,27 @@ export default function App() {
 			return;
 		}
 
-		const f = files[0];
-		const url = URL.createObjectURL(f);
+		// 静止画+音声モードの場合は音声ファイルのみをメタデータ解析の対象にする
+		const targetFile = modeId === 'still' ? files.find(isAudio) : files[0];
+
+		// プレビュー表示用URL（静止画モード時は音声を優先、なければ画像）
+		const displayFile = modeId === 'still' ? files.find(isAudio) || files[0] : files[0];
+
+		const url = URL.createObjectURL(displayFile);
 		setPreviewUrl(url);
+
+		// 解析対象がない（画像のみドロップされている状態）なら通信をスキップ
+		if (!targetFile || isImage(targetFile)) {
+			setMediaInfo(null);
+			setProbing(false);
+			return () => {
+				URL.revokeObjectURL(url);
+			};
+		}
 
 		setProbing(true);
 		const fd = new FormData();
-		fd.append('files', f);
+		fd.append('files', targetFile);
 		fetch('/api/probe', { method: 'POST', body: fd })
 			.then((res) => (res.ok ? res.json() : null))
 			.then((data) => {
@@ -513,6 +695,8 @@ export default function App() {
 		}
 		if (mode.id === 'fps' && !(Number(p.fps) >= 1 && Number(p.fps) <= 240))
 			return 'FPS は 1〜240 の数値で入力してください';
+		if (mode.id === 'rotate' && !['90', '180', '270'].includes(p.angle))
+			return '回転角度を選択してください';
 
 		if (mode.id === 'cut') {
 			for (let i = 0; i < ranges.length; i++) {
@@ -538,7 +722,7 @@ export default function App() {
 
 		const fd = new FormData();
 		fd.append('mode', mode.id);
-		['format', 'db', 'videoBitrate', 'audioBitrate', 'fps', 'size'].forEach((k) =>
+		['format', 'db', 'videoBitrate', 'audioBitrate', 'fps', 'size', 'angle'].forEach((k) =>
 			fd.append(k, p[k]),
 		);
 
@@ -700,6 +884,38 @@ export default function App() {
 								<option value="1080">フルHD 1080p（横 1920px 以内）</option>
 								<option value="1280">HD 720p 相当（横 1280px 以内）</option>
 								<option value="720">コンパクト（横 720px 以内）</option>
+							</select>
+						</Field>
+					</div>
+				);
+			case 'rotate':
+				return (
+					<div className="rotate-section">
+						{previewUrl && (
+							<div className="preview-container rotate-preview-container">
+								<div className="preview-header">
+									<span className="field-label">回転プレビュー</span>
+									<span className="field-hint">選択した角度の向きがリアルタイムで反映されます</span>
+								</div>
+								<div className="video-wrapper rotate-wrapper">
+									<video
+										ref={mediaRef}
+										src={previewUrl}
+										controls
+										className="preview-media"
+										style={{
+											transform: `rotate(${p.angle}deg)`,
+											transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+										}}
+									/>
+								</div>
+							</div>
+						)}
+						<Field label="回転角度（時計回り）" hint="90度・180度・270度から選択してください">
+							<select value={p.angle} onChange={setParam('angle')} disabled={busy}>
+								<option value="90">90° 時計回り</option>
+								<option value="180">180° 反転</option>
+								<option value="270">270° 時計回り（90° 反時計回り）</option>
 							</select>
 						</Field>
 					</div>
@@ -1042,23 +1258,47 @@ export default function App() {
 				<nav className="modes" aria-label="機能の選択">
 					<div className="modes-label">ツールメニュー</div>
 					{MODES.map((m) => (
-						<button
-							key={m.id}
-							type="button"
-							className={`mode ${m.id === modeId ? 'is-active' : ''}`}
-							aria-current={m.id === modeId ? 'true' : undefined}
-							onClick={() => changeMode(m.id)}
-							disabled={busy && m.id !== modeId}
-						>
-							<span className="mode-icon">{m.icon}</span>
-							<span className="mode-text">{m.label}</span>
-						</button>
+						<div key={m.id} className="mode-item-wrapper">
+							<button
+								type="button"
+								className={`mode ${m.id === modeId ? 'is-active' : ''}`}
+								aria-current={m.id === modeId ? 'true' : undefined}
+								onClick={() => changeMode(m.id)}
+								disabled={busy && m.id !== modeId}
+							>
+								<span className="mode-icon">{m.icon}</span>
+								<span className="mode-text">{m.label}</span>
+							</button>
+							<button
+								type="button"
+								className="btn-info"
+								onClick={(e) => {
+									e.stopPropagation();
+									setSpecModalMode(m);
+								}}
+								aria-label={`${m.label} の詳細仕様・諸元を確認`}
+								title={`${m.label} の詳細仕様・FFmpegコマンドを確認`}
+							>
+								i
+							</button>
+						</div>
 					))}
 				</nav>
 
 				<main className="panel">
 					<div className="panel-header">
-						<h2>{mode.label}</h2>
+						<div className="panel-title-row">
+							<h2>{mode.label}</h2>
+							<button
+								type="button"
+								className="btn-info-badge"
+								onClick={() => setSpecModalMode(mode)}
+								title={`${mode.label} の詳細仕様・FFmpegコマンドを確認`}
+							>
+								<span className="info-circle">i</span>
+								<span>変換仕様・コマンド諸元</span>
+							</button>
+						</div>
 						<p className="panel-desc">{mode.desc}</p>
 					</div>
 
@@ -1309,6 +1549,84 @@ export default function App() {
 					{renderStatus()}
 				</main>
 			</div>
+
+			{/* ---- 諸元確認モーダル ---- */}
+			{specModalMode && specModalMode.specs && (
+				<div
+					className="modal-backdrop"
+					onClick={() => setSpecModalMode(null)}
+					role="dialog"
+					aria-modal="true"
+				>
+					<div className="modal-card" onClick={(e) => e.stopPropagation()}>
+						<div className="modal-header">
+							<div className="modal-title-group">
+								<span className="modal-icon">{specModalMode.icon}</span>
+								<div>
+									<h3 className="modal-title">{specModalMode.specs.title}</h3>
+									<p className="modal-subtitle">{specModalMode.desc}</p>
+								</div>
+							</div>
+							<button
+								type="button"
+								className="modal-close-btn"
+								onClick={() => setSpecModalMode(null)}
+								aria-label="閉じる"
+							>
+								×
+							</button>
+						</div>
+
+						<div className="modal-body">
+							<div className="spec-comparison-grid">
+								<div className="spec-box is-changes">
+									<div className="spec-box-header">
+										<span className="spec-tag is-change">変更される要素</span>
+									</div>
+									<ul className="spec-list">
+										{specModalMode.specs.changes.map((item, idx) => (
+											<li key={idx}>{item}</li>
+										))}
+									</ul>
+								</div>
+
+								<div className="spec-box is-keeps">
+									<div className="spec-box-header">
+										<span className="spec-tag is-keep">保持される要素（不変・無劣化）</span>
+									</div>
+									<ul className="spec-list">
+										{specModalMode.specs.keeps.map((item, idx) => (
+											<li key={idx}>{item}</li>
+										))}
+									</ul>
+								</div>
+							</div>
+
+							<div className="spec-section">
+								<h4 className="spec-section-title">実行されるFFmpegコマンドライン（等価例）</h4>
+								<pre className="command-pre">
+									<code>{specModalMode.specs.command}</code>
+								</pre>
+							</div>
+
+							<div className="spec-section">
+								<h4 className="spec-section-title">技術解説・パラメータ諸元</h4>
+								<p className="spec-detail-text">{specModalMode.specs.details}</p>
+							</div>
+						</div>
+
+						<div className="modal-footer">
+							<button
+								type="button"
+								className="btn-primary btn-sm"
+								onClick={() => setSpecModalMode(null)}
+							>
+								閉じる
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

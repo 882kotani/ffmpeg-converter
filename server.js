@@ -9,7 +9,7 @@ const fs = require('fs');
 
 /* ============ 設定（環境変数で上書き可能） ============ */
 const PORT = Number(process.env.PORT) || 10000;
-const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT) || 3;
+const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT) || 2;
 const MAX_FILE_MB = Number(process.env.MAX_FILE_MB) || 2048;
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
 const FFPROBE = process.env.FFPROBE_PATH || 'ffprobe';
@@ -445,6 +445,38 @@ function makePlan(body, inputs) {
 				},
 			};
 		}
+		case 'rotate': {
+			need(1, ['video']);
+			const angle = String(body.angle || '90');
+			if (!['90', '180', '270'].includes(angle))
+				throw new Error('回転角度は 90 / 180 / 270 から選択してください');
+			let vf = '';
+			if (angle === '90') vf = 'transpose=1';
+			else if (angle === '180') vf = 'transpose=1,transpose=1';
+			else if (angle === '270') vf = 'transpose=2';
+			vf += ',scale=trunc(iw/2)*2:trunc(ih/2)*2';
+			const i = inputs[0];
+			return {
+				ext: i.ext,
+				suffix: `_rot${angle}`,
+				build: async () => {
+					const info = await getMediaInfo(i.path);
+					const colorArgs = getColorArgs(info);
+					return {
+						args: [
+							'-i',
+							i.path,
+							'-vf',
+							vf,
+							'-metadata:s:v:0',
+							'rotate=0',
+							...enc(i.ext, { colorArgs }),
+						],
+						duration: info.dur,
+					};
+				},
+			};
+		}
 		case 'concat': {
 			if (inputs.length < 2 || !inputs.every((i) => kind(i) === 'video'))
 				throw new Error('結合には動画ファイルを2本以上指定してください');
@@ -505,22 +537,23 @@ function makePlan(body, inputs) {
 				suffix: '_video',
 				build: async () => {
 					const aInfo = await getMediaInfo(au[0].path);
-					// 音声の長さを秒数で取得し、末尾4秒超過を切り落とすため -t を明示的に設定
-					const dur = aInfo.dur > 0 ? aInfo.dur.toFixed(3) : null;
+					const dur = aInfo.dur > 0 ? aInfo.dur.toFixed(3) : '30';
 					return {
 						args: [
 							'-loop',
 							'1',
 							'-framerate',
-							'10',
+							'2',
 							'-i',
 							im[0].path,
 							'-i',
 							au[0].path,
+							'-map',
+							'0:v:0',
+							'-map',
+							'1:a:0',
 							'-c:v',
 							'libx264',
-							'-tune',
-							'stillimage',
 							'-preset',
 							'veryfast',
 							'-pix_fmt',
@@ -537,11 +570,12 @@ function makePlan(body, inputs) {
 							'aac',
 							'-b:a',
 							'192k',
-							...(dur ? ['-t', dur] : ['-shortest']),
+							'-t',
+							dur,
 							'-movflags',
 							'+faststart',
 						],
-						duration: aInfo.dur,
+						duration: parseFloat(dur),
 					};
 				},
 			};
